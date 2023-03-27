@@ -1,6 +1,6 @@
 #ifndef PROC_H
 #define PROC_H
-
+//#define ONLY_RUNNING_TIME
 #include "types.h"
 
 #define NPROC (16)
@@ -38,7 +38,10 @@ struct proc {
 	/*
 	* LAB1: you may need to add some new fields here
 	*/
-	uint64 first_scheduled;
+	uint64 time_scheduled;
+#ifdef ONLY_RUNNING_TIME
+	uint64 total_used_time;
+#endif
 	unsigned int syscall_counter[MAX_SYSCALL_NUM];
 };
 

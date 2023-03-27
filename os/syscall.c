@@ -39,16 +39,47 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz)
 /*
 * LAB1: you may need to define sys_task_info here
 */
+inline TaskStatus get_task_status(struct proc *p)
+{
+	switch (p->state) {
+	case RUNNING:
+		return Running;
+	case SLEEPING:
+	case RUNNABLE:
+		if (p->time_scheduled == (uint64)-1)
+			return UnInit;
+		else
+			return Ready;
+	case ZOMBIE:
+		return Exited;
+	case UNUSED:
+	case USED:
+	default:
+		panic("Unexpected task statis %d.", p->state);
+		return Exited;
+	}
+	
+}
+uint64 sys_getpid()
+{
+	return curr_proc()->pid;
+}
 uint64 sys_task_info(TaskInfo *ti)
 {
-	ti->status = Running;
-	//ti->status = curr_proc()->state;
-	ti->time = get_cycle() / (CPU_FREQ/1000) - curr_proc()->first_scheduled;
-	memmove(
-		ti->syscall_times,
-		curr_proc()->syscall_counter,
-		sizeof(unsigned int) * MAX_SYSCALL_NUM
-	);
+	ti->status = get_task_status(curr_proc());
+	
+#ifdef ONLY_RUNNING_TIME
+	ti->time = ((curr_proc()->state == RUNNING) ?
+			    (get_cycle() / (CPU_FREQ / 1000) -
+			     curr_proc()->time_scheduled) :
+			    0) +
+		   curr_proc()->total_used_time;
+#else
+	ti->time = get_cycle() / (CPU_FREQ / 1000) -
+		   curr_proc()->time_scheduled;
+#endif
+	memmove(ti->syscall_times, curr_proc()->syscall_counter,
+		sizeof(unsigned int) * MAX_SYSCALL_NUM);
 	return 0;
 }
 extern char trap_page[];
@@ -82,7 +113,8 @@ void syscall()
 		ret = sys_task_info((TaskInfo *)args[0]);
 		break;
 	case SYS_getpid:
-		
+		ret = sys_getpid();
+		break;
 	/*
 	* LAB1: you may need to add SYS_taskinfo case here
 	*/

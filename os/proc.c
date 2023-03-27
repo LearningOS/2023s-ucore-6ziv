@@ -68,7 +68,10 @@ found:
 	memset((void *)p->kstack, 0, PAGE_SIZE);
 	p->context.ra = (uint64)usertrapret;
 	p->context.sp = p->kstack + PAGE_SIZE;
-	p->first_scheduled = (uint64)-1;
+	p->time_scheduled = (uint64)-1;
+#ifdef ONLY_RUNNING_TIME
+	p->total_used_time = 0;
+#endif
 	memset(p->syscall_counter, 0, sizeof(unsigned int) * MAX_SYSCALL_NUM);
 	return p;
 }
@@ -87,10 +90,14 @@ void scheduler(void)
 				/*
 				* LAB1: you may need to init proc start time here
 				*/
-				if (p->first_scheduled == (uint64)(-1)) {
-					p->first_scheduled = get_cycle() / (CPU_FREQ / 1000);
+#ifdef ONLY_RUNNING_TIME
+				p->time_scheduled = get_cycle();
+#else
+				if (p->time_scheduled == (uint64)(-1)) {
+					p->time_scheduled =
+						get_cycle() / (CPU_FREQ / 1000);       
 				}
-
+#endif
 				p->state = RUNNING;
 				current_proc = p;
 				swtch(&idle.context, &p->context);
@@ -118,6 +125,10 @@ void sched(void)
 void yield(void)
 {
 	current_proc->state = RUNNABLE;
+#ifdef ONLY_RUNNING_TIME
+	current_proc->total_used_time +=
+		get_cycle() / (CPU_FREQ / 1000) - current_proc->time_scheduled;
+#endif
 	sched();
 }
 
@@ -127,6 +138,10 @@ void exit(int code)
 	struct proc *p = curr_proc();
 	infof("proc %d exit with %d", p->pid, code);
 	p->state = UNUSED;
+#ifdef ONLY_RUNNING_TIME
+	p->total_used_time +=
+		get_cycle() / (CPU_FREQ / 1000) - p->time_scheduled;
+#endif
 	finished();
 	sched();
 }

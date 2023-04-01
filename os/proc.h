@@ -1,10 +1,10 @@
 #ifndef PROC_H
 #define PROC_H
-
+//#define ONLY_RUNNING_TIME
 #include "types.h"
 
 #define NPROC (16)
-
+#include "syscall_ids.h"
 // Saved registers for kernel context switches.
 struct context {
 	uint64 ra;
@@ -38,11 +38,29 @@ struct proc {
 	/*
 	* LAB1: you may need to add some new fields here
 	*/
+	uint64 time_scheduled;
+#ifdef ONLY_RUNNING_TIME
+	uint64 total_used_time;
+#endif
+	unsigned int syscall_counter[MAX_SYSCALL_NUM];
 };
 
 /*
 * LAB1: you may need to define struct for TaskInfo here
 */
+
+typedef enum {
+	UnInit,
+	Ready,
+	Running,
+	Exited,
+} TaskStatus;
+typedef struct {
+	TaskStatus status;
+	unsigned int syscall_times[MAX_SYSCALL_NUM];
+	int time;
+} TaskInfo;
+//directly taken from user/include/stddef.h
 
 struct proc *curr_proc();
 void exit(int);

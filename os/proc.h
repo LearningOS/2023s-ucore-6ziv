@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "types.h"
 #include "queue.h"
+#include "syscall_ids.h"
 
 #define NPROC (512)
 #define FD_BUFFER_SIZE (16)
@@ -47,8 +48,26 @@ struct proc {
 	struct file *files[FD_BUFFER_SIZE];
 	uint64 program_brk;
 	uint64 heap_bottom;
-};
 
+	uint64 time_scheduled;
+#ifdef ONLY_RUNNING_TIME
+    uint64 total_used_time;
+#endif
+	unsigned int syscall_counter[MAX_SYSCALL_NUM];
+};
+typedef enum { 
+    UnInit, 
+    Ready, 
+    Running, 
+    Exited, 
+} TaskStatus;
+typedef struct {
+    TaskStatus status;
+    unsigned int syscall_times[MAX_SYSCALL_NUM];
+    int time;
+} TaskInfo;
+//directly taken from user/include/stddef.h
+ 
 int cpuid();
 struct proc *curr_proc();
 void exit(int);

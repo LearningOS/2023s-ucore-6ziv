@@ -5,7 +5,7 @@
 #include "syscall_ids.h"
 #include "timer.h"
 #include "trap.h"
-
+#include "vm.h"
 uint64 sys_write(int fd, uint64 va, uint len)
 {
 	debugf("sys_write fd = %d str = %x, len = %d", fd, va, len);
@@ -113,6 +113,113 @@ uint64 sys_sbrk(int n)
                 return -1;
         return addr;
 }
+inline int translate_port(int port)
+{
+	return (port << 1) | PTE_U;
+}
+int sys_mmap(void *start, unsigned long long len, int port, int flag, int fd)
+{
+	struct proc *p = curr_proc();
+ 
+	if (0 != (((uint64)start) % PGSIZE)) {
+		errorf("not aligned");
+		return -1;
+	}
+	if (len > 0x40000000) {
+		errorf("mmaping more than 1GiB");
+		return -1;
+	}
+	if (((port & (~0x7)) != 0) || ((port & 0x7) == 0)) {
+		errorf("Bad port %x", port);
+		return -1;
+	}
+	uint64 pages = (len + PGSIZE - 1) / PGSIZE;
+	for (uint64 j = 0; j < pages; j++) {
+		void *ptr = kalloc();
+		if (ptr == (void *)0) {
+			//
+			uvmunmap(p->pagetable, (uint64)start, j, 1);
+			errorf("no enough memory");
+			return -1;
+		}
+		if (0 != mappages(p->pagetable, (uint64)start + j * PGSIZE,
+				  PGSIZE, (uint64)ptr, translate_port(port))) {
+			//
+			kfree(ptr);
+			uvmunmap(p->pagetable, (uint64)start, j, 1);
+			errorf("cannot map memory");
+			return -1;
+		}
+	}
+	return 0;
+}
+int sys_munmap(void *start, unsigned long long len)
+{
+	struct proc *p = curr_proc();
+
+	if (0 != (uint64)start % PGSIZE) {
+		errorf("not aligned");
+		return -1;
+	}
+	if (len > 0x40000000) {
+		errorf("munmaping more than 1GiB");
+		return -1;
+	}
+
+	uint64 pages = (len + PGSIZE - 1) / PGSIZE;
+	for (uint64 j = 0; j < pages; j++) {
+		if (0 == walkaddr(p->pagetable, (uint64)(start + j * PGSIZE)))
+			return -1;
+	}
+
+	uvmunmap(p->pagetable, (uint64)start, pages, 1);
+	return 0;
+}
+
+inline TaskStatus get_task_status(struct proc *p)
+{
+	switch (p->state) {
+	case RUNNING:
+		return Running;
+	case SLEEPING:
+	case RUNNABLE:
+		if (p->time_scheduled == (uint64)-1)
+			return UnInit;
+		else
+			return Ready;
+	case ZOMBIE:
+		return Exited;
+	case UNUSED:
+	case USED:
+	default:
+		panic("Unexpected task statis %d.", p->state);
+		return Exited;
+	}
+}
+
+uint64 sys_task_info(TaskInfo *ti)
+{
+	struct proc* p = curr_proc();
+	
+	TaskInfo tti;
+	//TRANSLATE_ADDR(TaskInfo, ti);
+	tti.status = get_task_status(p);
+ 
+#ifdef ONLY_RUNNING_TIME
+	tti.time = ((p->state == RUNNING) ?
+			    (get_cycle() / (CPU_FREQ / 1000) -
+			     p->time_scheduled) :
+			    0) +
+		   p->total_used_time;
+#else
+	tti.time =
+		get_cycle() / (CPU_FREQ / 1000) - p->time_scheduled;
+#endif
+	memmove(tti.syscall_times, p->syscall_counter,
+		sizeof(unsigned int) * MAX_SYSCALL_NUM);
+	copyout(p->pagetable, (uint64)ti, (char *)&tti, sizeof(TaskInfo));
+	return 0;
+}
 
 extern char trap_page[];
 
@@ -124,6 +231,7 @@ void syscall()
 			   trapframe->a3, trapframe->a4, trapframe->a5 };
 	tracef("syscall %d args = [%x, %x, %x, %x, %x, %x]", id, args[0],
 	       args[1], args[2], args[3], args[4], args[5]);
+	++(curr_proc()->syscall_counter[id]);
 	switch (id) {
 	case SYS_write:
 		ret = sys_write(args[0], args[1], args[2]);
@@ -159,8 +267,18 @@ void syscall()
 		ret = sys_spawn(args[0]);
 		break;
 	case SYS_sbrk:
-                ret = sys_sbrk(args[0]);
-                break;
+		ret = sys_sbrk(args[0]);
+		break;
+	case SYS_mmap:
+		ret = sys_mmap((void *)args[0], args[1], args[2], args[3],
+			       args[4]);
+		break;
+	case SYS_munmap:
+		ret = sys_munmap((void *)args[0], args[1]);
+		break;
+	case SYS_task_info:
+		ret = sys_task_info((TaskInfo *)args[0]);
+		break;
 	default:
 		ret = -1;
 		errorf("unknown syscall %d", id);

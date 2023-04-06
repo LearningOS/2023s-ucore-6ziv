@@ -4,6 +4,7 @@
 #include "trap.h"
 #include "vm.h"
 #include "queue.h"
+#include "timer.h"
 
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
@@ -85,7 +86,13 @@ found:
 	p->exit_code = 0;
 	p->pagetable = uvmcreate((uint64)p->trapframe);
 	p->program_brk = 0;
-        p->heap_bottom = 0;
+    p->heap_bottom = 0;
+	
+    p->time_scheduled = (uint64)-1;
+#ifdef ONLY_RUNNING_TIME 
+    p->total_used_time = 0;
+#endif 
+	memset(p->syscall_counter, 0,sizeof(unsigned int) * MAX_SYSCALL_NUM);
 	memset(&p->context, 0, sizeof(p->context));
 	memset((void *)p->kstack, 0, KSTACK_SIZE);
 	memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
@@ -121,6 +128,16 @@ void scheduler()
 			panic("all app are over!\n");
 		}
 		tracef("swtich to proc %d", p - pool);
+#ifdef ONLY_RUNNING_TIME 
+        p->time_scheduled = get_cycle();
+#else 
+        if (p->time_scheduled == (uint64)(-1))
+        {
+            p->time_scheduled = get_cycle() /
+                (CPU_FREQ / 1000);
+        }
+#endif
+
 		p->state = RUNNING;
 		current_proc = p;
 		swtch(&idle.context, &p->context);
@@ -146,6 +163,10 @@ void sched()
 void yield()
 {
 	current_proc->state = RUNNABLE;
+#ifdef ONLY_RUNNING_TIME 
+    current_proc->total_used_time +=
+        get_cycle() / (CPU_FREQ / 1000) - current_proc->time_scheduled;
+#endif
 	add_task(current_proc);
 	sched();
 }
@@ -240,6 +261,10 @@ void exit(int code)
 	p->exit_code = code;
 	debugf("proc %d exit with %d\n", p->pid, code);
 	freeproc(p);
+#ifdef ONLY_RUNNING_TIME 
+    current_proc->total_used_time +=
+        get_cycle() / (CPU_FREQ / 1000) - current_proc->time_scheduled;
+#endif
 	if (p->parent != NULL) {
 		// Parent should `wait`
 		p->state = ZOMBIE;

@@ -13,7 +13,7 @@ __attribute__((aligned(4096))) char trapframe[NPROC][TRAP_PAGE_SIZE];
 extern char boot_stack_top[];
 struct proc *current_proc;
 struct proc idle;
-struct queue task_queue;
+//struct queue task_queue;
 
 int threadid()
 {
@@ -37,7 +37,7 @@ void proc_init()
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = IDLE_PID;
 	current_proc = &idle;
-	init_queue(&task_queue);
+	//init_queue(&task_queue);
 }
 
 int allocpid()
@@ -48,19 +48,37 @@ int allocpid()
 
 struct proc *fetch_task()
 {
-	int index = pop_queue(&task_queue);
+	/* int index = pop_queue(&task_queue);
 	if (index < 0) {
 		debugf("No task to fetch\n");
 		return NULL;
 	}
 	debugf("fetch task %d(pid=%d) to task queue\n", index, pool[index].pid);
-	return pool + index;
+	return pool + index;*/
+
+	struct proc *ret = NULL;
+	
+	struct proc *p;
+	for (p = pool; p < &pool[NPROC]; p++) {
+		if (p->state != RUNNABLE)
+			continue;
+
+		if (NULL == ret || (uint64)(p->stride - ret->stride) > UINT64_MAX / 2) {
+			ret = p;
+		}
+	}
+	if (ret == NULL) {
+		debugf("No task to fetch\n");
+		return NULL;
+	}
+	ret->stride += ret->pass;
+	return ret;
 }
 
 void add_task(struct proc *p)
 {
-	push_queue(&task_queue, p - pool);
-	debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
+	//push_queue(&task_queue, p - pool);
+	//debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
 }
 
 // Look in the process table for an UNUSED proc.
@@ -89,6 +107,9 @@ found:
     p->heap_bottom = 0;
 	
     p->time_scheduled = (uint64)-1;
+
+	p->stride = 0;
+    p->pass = BIG_STRIDE / 16;
 #ifdef ONLY_RUNNING_TIME 
     p->total_used_time = 0;
 #endif 

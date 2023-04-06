@@ -103,6 +103,11 @@ uint64 sys_spawn(uint64 va)
 
 uint64 sys_set_priority(long long prio){
     // TODO: your job is to complete the sys call
+	if (prio >= 2 && prio <= INT_MAX) {
+		struct proc *p = curr_proc();
+		p->pass = BIG_STRIDE / prio;
+		return prio;
+	}
     return -1;
 }
 
@@ -181,7 +186,6 @@ int sys_munmap(void *start, unsigned long long len)
 	uvmunmap(p->pagetable, (uint64)start, pages, 1);
 	return 0;
 }
-
 inline TaskStatus get_task_status(struct proc *p)
 {
 	switch (p->state) {
@@ -284,6 +288,9 @@ void syscall()
 		break;
 	case SYS_task_info:
 		ret = sys_task_info((TaskInfo *)args[0]);
+		break;
+	case SYS_setpriority:
+		ret = sys_set_priority((long long)args[0]);
 		break;
 	default:
 		ret = -1;

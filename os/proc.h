@@ -34,6 +34,7 @@ struct context {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
+#define BIG_STRIDE (65536)
 struct proc {
 	enum procstate state; // Process state
 	int pid; // Process ID
@@ -53,6 +54,9 @@ struct proc {
 #ifdef ONLY_RUNNING_TIME
     uint64 total_used_time;
 #endif
+
+	uint64 stride;
+    uint64 pass;
 	unsigned int syscall_counter[MAX_SYSCALL_NUM];
 };
 typedef enum { 

@@ -107,6 +107,9 @@ int sys_mmap(void *start, unsigned long long len, int port, int flag, int fd)
 			errorf("cannot map memory");
 			return -1;
 		}
+		uint64 page_id = ((uint64)start) / PGSIZE + j;
+		if (page_id >= p->max_page)
+			p->max_page = page_id + 1;
 	}
 	return 0;
 }

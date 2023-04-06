@@ -77,6 +77,7 @@ void sched();
 void yield();
 int fork();
 int exec(char *);
+int spawn(char *name);
 int wait(int, int *);
 void add_task(struct proc *);
 struct proc *pop_task();

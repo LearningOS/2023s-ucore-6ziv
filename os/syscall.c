@@ -95,7 +95,10 @@ uint64 sys_wait(int pid, uint64 va)
 uint64 sys_spawn(uint64 va)
 {
 	// TODO: your job is to complete the sys call
-	return -1;
+	struct proc *p = curr_proc();
+	char name[200];
+	copyinstr(p->pagetable, name, va, 200);
+	return spawn(name);
 }
 
 uint64 sys_set_priority(long long prio){
@@ -150,6 +153,9 @@ int sys_mmap(void *start, unsigned long long len, int port, int flag, int fd)
 			errorf("cannot map memory");
 			return -1;
 		}
+		uint64 page_id = ((uint64)start) / PGSIZE + j;
+		if (page_id >= p->max_page)
+			p->max_page = page_id + 1;
 	}
 	return 0;
 }

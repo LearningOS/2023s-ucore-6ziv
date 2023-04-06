@@ -1,5 +1,7 @@
 # chapter4 练习
 
+王哲威（[https://github.com/LearningOS/2023s-ucore-6ziv](https://github.com/LearningOS/2023s-ucore-6ziv)）
+
 #### 编程作业1：重新实现sys_gettimeofday以及sys_task_info
 
 首先先把chapter3的代码复制进来，实现sys_task_info。
@@ -105,5 +107,3 @@
   进出内核态时更换页表。
   
   但是很多系统调用并不需要访问`kernel`独有的页表，因此我们可以选择由系统调用自己决定是否切换以及切换的时机。
-
-

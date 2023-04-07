@@ -1,4 +1,4 @@
-# chapter4 练习
+# chapter5 练习
 
 王哲威（[https://github.com/LearningOS/2023s-ucore-6ziv](https://github.com/LearningOS/2023s-ucore-6ziv)）
 
@@ -22,7 +22,7 @@ struct proc *np;
 struct proc *p = curr_proc();
 // Allocate process.
 if ((np = allocproc()) == 0) {
-	return -1;
+    return -1;
 }
 np->parent = p;
 np->state = RUNNABLE;
@@ -37,14 +37,12 @@ return np->pid;
 ```c
 uint64 sys_spawn(uint64 va)
 {
-	struct proc *p = curr_proc();
-	char name[200];
-	copyinstr(p->pagetable, name, va, 200);
-	return spawn(name);
+    struct proc *p = curr_proc();
+    char name[200];
+    copyinstr(p->pagetable, name, va, 200);
+    return spawn(name);
 }
 ```
-
-
 
 #### 编程作业2：stride调度算法
 
@@ -63,45 +61,41 @@ uint64 sys_spawn(uint64 va)
 ```c
 struct proc *fetch_task()
 {
-	struct proc *ret = NULL;
-	
-	struct proc *p;
-	for (p = pool; p < &pool[NPROC]; p++) {
-		if (p->state != RUNNABLE)
-			continue;
+    struct proc *ret = NULL;
 
-		if (NULL == ret || (uint64)(p->stride - ret->stride) > UINT64_MAX / 2) {
-			ret = p;
-		}
-	}
-	if (ret == NULL) {
-		debugf("No task to fetch\n");
-		return NULL;
-	}
-	ret->stride += ret->pass;
-	return ret;
+    struct proc *p;
+    for (p = pool; p < &pool[NPROC]; p++) {
+        if (p->state != RUNNABLE)
+            continue;
+
+        if (NULL == ret || (uint64)(p->stride - ret->stride) > UINT64_MAX / 2) {
+            ret = p;
+        }
+    }
+    if (ret == NULL) {
+        debugf("No task to fetch\n");
+        return NULL;
+    }
+    ret->stride += ret->pass;
+    return ret;
 }
 ```
 
 而`add_task()`则变成了空函数。
-
-
 
 最后，我们实现`sys_set_priority()`。只需要检查`prio`在合法范围内，之后利用公式计算`pass = BIG_STRIDE / prio`即可。
 
 ```c
 uint64 sys_set_priority(long long prio){
     // TODO: your job is to complete the sys call
-	if (prio >= 2 && prio <= INT_MAX) {
-		struct proc *p = curr_proc();
-		p->pass = BIG_STRIDE / prio;
-		return prio;
-	}
+    if (prio >= 2 && prio <= INT_MAX) {
+        struct proc *p = curr_proc();
+        p->pass = BIG_STRIDE / prio;
+        return prio;
+    }
     return -1;
 }
 ```
-
-
 
 #### 问答题：
 
@@ -110,8 +104,6 @@ uint64 sys_set_priority(long long prio){
 > 实际情况是轮到 p1 执行吗？为什么？
 
  不是，在执行之后`p2.stride`变成了$5$ 。在没有特殊处理的情况下，依然是`p2.stride`更小，下一次还是`p2`执行。
-
-
 
 > 我们之前要求进程优先级 >= 2 其实就是为了解决这个问题。可以证明，**在不考虑溢出的情况下**, 在进程优先级全部 >= 2 的情况下，如果严格按照算法执行，那么 STRIDE_MAX – STRIDE_MIN <= BigStride / 2。
 > 
@@ -128,8 +120,6 @@ uint64 sys_set_priority(long long prio){
   那么根据归纳公理可以知道：如果要证明的公式成立，那么它在运行过程中就一直成立。
   
   如果严格按照算法执行，那么要证明的公式初始就是成立的。所以公式一直成立。
-  
-  
 
 * 另一方面，如果中间出现了其它情况，导致公式不成立（比如新进程）。
   
@@ -138,8 +128,6 @@ uint64 sys_set_priority(long long prio){
   也就是说，一定会在有限步调度之后，使得stride的最小值增加。同时，因为待证明的公式不成立，所以stride的最大值不会增加。也就是说进程的stride的极差一定会在有限步内减少。
   
   因为极差是个有限整数值，所以它一定会在有限步内减少到$BigStride/2$以内。换言之，就算发生了异常，公式也会在有限步调度内重新成立。
-  
-  
 
 > 已知以上结论，**在考虑溢出的情况下**，假设我们通过逐个比较得到 Stride 最小的进程，请设计一个合适的比较函数，用来正确比较两个 Stride 的真正大小：
 
@@ -153,12 +141,8 @@ uint64 sys_set_priority(long long prio){
 
 现在我们想要无歧义，就需要$M>BigStride$。于是，$|a|$和$|a-M|$中，至多只有一个不超过$BigStride/2$。于是我们就可以判断出来$s1-s2$到底是哪一个，也就是知道了$s1-s2$的符号，自然就能够比较$s1$和$s2$的大小。
 
-
-
 为了方便起见，我们不使用$BigStride/2$，而是用$M/2$作为标准：同样地，$|a|$和$|a-M|$至多只有一个大于它，而且在$|s_1-s_2|\leqslant BigStride/2$时恰好是一个。
 
 所以，我们只要比较，当$a > M/2$时，$s1<s2$；否则，$s1\geqslant s2$。
-
-
 
 更特别地：因为我们每次都按照同样的顺序遍历进程列表，所以即使有添加新的进程导致STRIDE_MAX – STRIDE_MIN <= BigStride / 2不成立，调度器也能够以某个相对固定的方式“切开圆环”，将进程的stride重新归到“环”的同一侧。

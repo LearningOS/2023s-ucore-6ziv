@@ -93,7 +93,63 @@ static struct inode *create(char *path, short type)
 	return ip;
 }
 
-//A process creates or opens a file according to its path, returning the file descriptor of the created or opened file.
+int link(char *path, struct inode *ip)
+{
+	struct inode *dp, *ip2;
+	dp = root_dir(); //Remember that the root_inode is open in this step,so it needs closing then.
+	ivalid(dp);
+	if ((ip2 = dirlookup(dp, path, 0)) != 0) {
+		warnf("create a exist file link\n");
+		iput(dp); //Close the root_inode
+		iput(ip2);
+		return -1;
+	}
+	
+	ivalid(ip);
+	if (dirlink(dp, path, ip->inum) < 0)
+		panic("create: dirlink");
+	++ip->nlink;
+	iupdate(ip);
+	iput(dp);
+	return 0;
+}
+
+int unlink(char *path)
+{
+	infof("unlinking file %s", path);
+	struct inode *dp, *ip;
+	dp = root_dir(); //Remember that the root_inode is open in this step,so it needs closing then.
+	ivalid(dp);
+	if ((ip = dirlookup(dp, path, 0)) == 0) {
+		warnf("unlinking a non-existent file\n");
+		iput(dp); //Close the root_inode
+		return -1;
+	}
+	ivalid(ip);
+	iput(ip);
+
+	if (dirunlink(dp, path) < 0)
+		panic("create: dirlink");
+	iput(dp);
+	return 0;
+}
+#define DIR 0x040000 // directory
+#define FILE 0x100000 // ordinary regular file
+int fstat(struct file *file, struct Stat *st)
+{
+	ivalid(file->ip);
+	st->dev = 0;
+	st->ino = file->ip->inum;
+	st->mode = 0;
+	if (file->ip->type & T_DIR)
+		st->mode |= DIR;
+	if (file->ip->type & T_FILE)
+		st->mode |= FILE;
+	st->nlink = file->ip->nlink;
+	return 0;
+	//st->mode = file->ip->type;
+}
+	//A process creates or opens a file according to its path, returning the file descriptor of the created or opened file.
 //If omode is O_CREATE, create a new file
 //if omode if the others,open a created file.
 int fileopen(char *path, uint64 omode)

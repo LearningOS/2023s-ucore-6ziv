@@ -186,23 +186,73 @@ uint64 sys_close(int fd)
 	return 0;
 }
 
+#define UNUSED(x) (void)(x)
+int linkat(int olddirfd, char *oldpath, int newdirfd, char *newpath,
+	   unsigned int flags)
+{
+	UNUSED(olddirfd);
+	UNUSED(newdirfd);
+	UNUSED(flags);
+
+	struct inode *old_inode = namei(oldpath);
+	if (old_inode == NULL) {
+		errorf("linked file does not exist.");
+		return -1;
+	}
+	int ret = link(newpath, old_inode);
+	iput(old_inode);
+	return ret;
+}
+int unlinkat(int dirfd, char *path, unsigned int flags)
+{
+	UNUSED(dirfd);
+	UNUSED(flags);
+
+	return unlink(path);
+}
+int fstatat(struct file *file, struct Stat *st)
+{
+	return fstat(file, st);
+}
+
 int sys_fstat(int fd, uint64 stat)
 {
 	//TODO: your job is to complete the syscall
-	return -1;
+	struct proc *p = curr_proc();
+	struct file *f = p->files[fd];
+	if (f == NULL) {
+		errorf("invalid fd %d", fd);
+		return -1;
+	}
+	struct Stat istat;
+	fstatat(f, &istat);
+	copyout(p->pagetable, stat, (char *)(&istat), sizeof(struct Stat));
+	//fstatat()
+	return 0;
+	//return -1;
 }
 
 int sys_linkat(int olddirfd, uint64 oldpath, int newdirfd, uint64 newpath,
 	       uint64 flags)
 {
+	char old_path[MAX_PATH];
+	char new_path[MAX_PATH];
+	struct proc *p = curr_proc();
+	copyinstr(p->pagetable, old_path, oldpath, MAX_PATH);
+	copyinstr(p->pagetable, new_path, newpath, MAX_PATH);
+	return linkat(olddirfd, old_path, newdirfd, new_path, flags);
 	//TODO: your job is to complete the syscall
-	return -1;
+	//return -1;
 }
 
 int sys_unlinkat(int dirfd, uint64 name, uint64 flags)
 {
+	char filepath[MAX_PATH];
+	struct proc *p = curr_proc();
+	copyinstr(p->pagetable, filepath, name, MAX_PATH);
+	return unlinkat(dirfd, filepath, flags);
 	//TODO: your job is to complete the syscall
-	return -1;
+	//return -1;
 }
 
 uint64 sys_sbrk(int n)

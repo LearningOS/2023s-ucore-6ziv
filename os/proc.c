@@ -4,6 +4,7 @@
 #include "trap.h"
 #include "vm.h"
 #include "queue.h"
+#include "timer.h"
 
 struct proc pool[NPROC];
 __attribute__((aligned(16))) char kstack[NPROC][PAGE_SIZE];
@@ -12,7 +13,7 @@ __attribute__((aligned(4096))) char trapframe[NPROC][TRAP_PAGE_SIZE];
 extern char boot_stack_top[];
 struct proc *current_proc;
 struct proc idle;
-struct queue task_queue;
+//struct queue task_queue;
 
 int threadid()
 {
@@ -36,7 +37,7 @@ void proc_init()
 	idle.kstack = (uint64)boot_stack_top;
 	idle.pid = IDLE_PID;
 	current_proc = &idle;
-	init_queue(&task_queue);
+	//init_queue(&task_queue);
 }
 
 int allocpid()
@@ -47,19 +48,37 @@ int allocpid()
 
 struct proc *fetch_task()
 {
-	int index = pop_queue(&task_queue);
+	/* int index = pop_queue(&task_queue);
 	if (index < 0) {
 		debugf("No task to fetch\n");
 		return NULL;
 	}
 	debugf("fetch task %d(pid=%d) to task queue\n", index, pool[index].pid);
-	return pool + index;
+	return pool + index;*/
+
+	struct proc *ret = NULL;
+	
+	struct proc *p;
+	for (p = pool; p < &pool[NPROC]; p++) {
+		if (p->state != RUNNABLE)
+			continue;
+
+		if (NULL == ret || (uint64)(p->stride - ret->stride) > UINT64_MAX / 2) {
+			ret = p;
+		}
+	}
+	if (ret == NULL) {
+		debugf("No task to fetch\n");
+		return NULL;
+	}
+	ret->stride += ret->pass;
+	return ret;
 }
 
 void add_task(struct proc *p)
 {
-	push_queue(&task_queue, p - pool);
-	debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
+	//push_queue(&task_queue, p - pool);
+	//debugf("add task %d(pid=%d) to task queue\n", p - pool, p->pid);
 }
 
 // Look in the process table for an UNUSED proc.
@@ -85,7 +104,16 @@ found:
 	p->exit_code = 0;
 	p->pagetable = uvmcreate((uint64)p->trapframe);
 	p->program_brk = 0;
-        p->heap_bottom = 0;
+    p->heap_bottom = 0;
+	
+    p->time_scheduled = (uint64)-1;
+
+	p->stride = 0;
+    p->pass = BIG_STRIDE / 16;
+#ifdef ONLY_RUNNING_TIME 
+    p->total_used_time = 0;
+#endif 
+	memset(p->syscall_counter, 0,sizeof(unsigned int) * MAX_SYSCALL_NUM);
 	memset(&p->context, 0, sizeof(p->context));
 	memset((void *)p->kstack, 0, KSTACK_SIZE);
 	memset((void *)p->trapframe, 0, TRAP_PAGE_SIZE);
@@ -121,6 +149,16 @@ void scheduler()
 			panic("all app are over!\n");
 		}
 		tracef("swtich to proc %d", p - pool);
+#ifdef ONLY_RUNNING_TIME 
+        p->time_scheduled = get_cycle();
+#else 
+        if (p->time_scheduled == (uint64)(-1))
+        {
+            p->time_scheduled = get_cycle() /
+                (CPU_FREQ / 1000);
+        }
+#endif
+
 		p->state = RUNNING;
 		current_proc = p;
 		swtch(&idle.context, &p->context);
@@ -146,6 +184,10 @@ void sched()
 void yield()
 {
 	current_proc->state = RUNNABLE;
+#ifdef ONLY_RUNNING_TIME 
+    current_proc->total_used_time +=
+        get_cycle() / (CPU_FREQ / 1000) - current_proc->time_scheduled;
+#endif
 	add_task(current_proc);
 	sched();
 }
@@ -202,6 +244,26 @@ int exec(char *name)
 	return 0;
 }
 
+int spawn(char *name)
+{
+	int id = get_id_by_name(name);
+	if (id < 0) {
+		return -1;
+	}
+	struct proc *np;
+	struct proc *p = curr_proc();
+	// Allocate process.
+	if ((np = allocproc()) == 0) {
+		return -1;
+	}
+	np->parent = p;
+	np->state = RUNNABLE;
+	np->max_page = 0;
+	loader(id, np);
+	add_task(np);
+	return np->pid;
+}
+
 int wait(int pid, int *code)
 {
 	struct proc *np;
@@ -240,6 +302,10 @@ void exit(int code)
 	p->exit_code = code;
 	debugf("proc %d exit with %d\n", p->pid, code);
 	freeproc(p);
+#ifdef ONLY_RUNNING_TIME 
+    current_proc->total_used_time +=
+        get_cycle() / (CPU_FREQ / 1000) - current_proc->time_scheduled;
+#endif
 	if (p->parent != NULL) {
 		// Parent should `wait`
 		p->state = ZOMBIE;

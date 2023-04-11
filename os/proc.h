@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "types.h"
 #include "queue.h"
+#include "syscall_ids.h"
 
 #define NPROC (512)
 #define FD_BUFFER_SIZE (16)
@@ -33,6 +34,7 @@ struct context {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
+#define BIG_STRIDE (65536)
 struct proc {
 	enum procstate state; // Process state
 	int pid; // Process ID
@@ -47,8 +49,29 @@ struct proc {
 	struct file *files[FD_BUFFER_SIZE];
 	uint64 program_brk;
 	uint64 heap_bottom;
-};
 
+	uint64 time_scheduled;
+#ifdef ONLY_RUNNING_TIME
+    uint64 total_used_time;
+#endif
+
+	uint64 stride;
+    uint64 pass;
+	unsigned int syscall_counter[MAX_SYSCALL_NUM];
+};
+typedef enum { 
+    UnInit, 
+    Ready, 
+    Running, 
+    Exited, 
+} TaskStatus;
+typedef struct {
+    TaskStatus status;
+    unsigned int syscall_times[MAX_SYSCALL_NUM];
+    int time;
+} TaskInfo;
+//directly taken from user/include/stddef.h
+ 
 int cpuid();
 struct proc *curr_proc();
 void exit(int);
@@ -58,6 +81,7 @@ void sched();
 void yield();
 int fork();
 int exec(char *);
+int spawn(char *name);
 int wait(int, int *);
 void add_task(struct proc *);
 struct proc *pop_task();

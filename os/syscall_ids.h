@@ -280,6 +280,7 @@
 /*
 * LAB1: you may need to define SYS_task_info here
 */
+#define SYS_task_info 410
 
 
 #define SYS_pidfd_send_signal 424
@@ -298,3 +299,5 @@
 #define SYS_pidfd_getfd 438
 #define SYS_faccessat2 439
 #define SYS_riscv_flush_icache 244 + 15
+
+#define MAX_SYSCALL_NUM 500
